@@ -6,12 +6,18 @@ from rag_processing import (
     chunk_id,
     chunk_text,
     clean_text,
+    cut_at_references,
+    is_table_of_contents,
     index_documents
 )
 
 
 def test_clean_text_joins_hyphenated_words():
     assert clean_text("aortic valvu-\nlar  disease\n\n") == "aortic valvular disease"
+
+
+def test_clean_text_expands_ligatures():
+    assert clean_text("atrial ﬁbrillation") == "atrial fibrillation"
 
 
 def test_chunk_text_respects_size_and_overlap():
@@ -61,3 +67,25 @@ def test_chunk_document_reads_text_files(tmp_path):
 
 def test_index_documents_missing_folder_returns_empty(tmp_path):
     assert index_documents(str(tmp_path / "does_not_exist")) == []
+
+
+def test_cut_at_references_drops_bibliography():
+    page = "Echocardiography is recommended.\n22 References\n1. Ponikowski P, Eur Heart J 2016;37:2129."
+
+    text, found = cut_at_references(page)
+
+    assert found
+    assert text == "Echocardiography is recommended."
+
+
+def test_cut_at_references_ignores_word_inside_sentence():
+    page = "See the references in Table 3 for details."
+
+    assert cut_at_references(page) == (page, False)
+
+
+def test_table_of_contents_is_detected():
+    toc = "3.1 Heart Team ........ 1136 3.2 Patient evaluation ........ 1137 3.2.1 Clinical evaluation ........ 1137"
+
+    assert is_table_of_contents(toc)
+    assert not is_table_of_contents("Echocardiography is recommended in patients with a murmur.")

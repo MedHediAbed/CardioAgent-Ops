@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 import uuid
 from pathlib import Path
 
@@ -18,6 +19,9 @@ MIN_CHUNK_WORDS = 20                                    # skip tiny chunks (titl
 TOP_K = int(os.getenv("TOP_K", "4"))
 
 SUPPORTED_EXTENSIONS = (".pdf", ".txt", ".md")
+
+# A line that is only "References" / "Bibliography", optionally numbered
+REFERENCES_HEADING = re.compile(r"^(\d+\.?\s*)?(references|bibliography)$", re.IGNORECASE)
 
 # Loaded lazily: the model and the client are heavy and not needed for chunking
 _model = None
@@ -56,8 +60,11 @@ def get_client():
 
 def clean_text(text: str):
     """
-    Remove PDF artefacts: hyphenated line breaks and repeated whitespace.
+    Remove PDF artefacts: ligatures, hyphenated line breaks and repeated whitespace.
     """
+
+    # "ﬁbrillation" (single ligature character) -> "fibrillation"
+    text = unicodedata.normalize("NFKC", text)
 
     # "valvu-\nlar" -> "valvular"
     text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
@@ -67,21 +74,50 @@ def clean_text(text: str):
     return text.strip()
 
 
+def cut_at_references(raw_text: str):
+    """
+    Return the text before a "References" heading (e.g. "References",
+    "22 References") and whether the heading was found.
+    The bibliography is ~1/3 of an ESC guideline and only adds noise to search.
+    """
+
+    lines = raw_text.splitlines()
+
+    for index, line in enumerate(lines):
+        if REFERENCES_HEADING.match(line.strip()):
+            return "\n".join(lines[:index]), True
+
+    return raw_text, False
+
+
 def load_pdf(file_path: str):
     """
-    Read a PDF and return its text page by page.
+    Read a PDF and return its text page by page, stopping at the bibliography.
     """
 
     reader = PdfReader(file_path)
     pages = []
 
     for page_number, page in enumerate(reader.pages, start=1):
-        text = clean_text(page.extract_text() or "")
+        raw_text, reached_references = cut_at_references(page.extract_text() or "")
+        text = clean_text(raw_text)
 
         if text:
             pages.append({"page": page_number, "text": text})
 
+        if reached_references:
+            break
+
     return pages
+
+
+def is_table_of_contents(text: str):
+    """
+    Table-of-contents text is full of dot leaders ("Patient evaluation ..... 1136").
+    It matches many queries but contains no recommendation.
+    """
+
+    return len(re.findall(r"(\.\s?){5,}", text)) >= 3
 
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP):
@@ -99,7 +135,7 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     for start in range(0, len(words), step):
         chunk = words[start:start + chunk_size]
 
-        if len(chunk) >= MIN_CHUNK_WORDS:
+        if len(chunk) >= MIN_CHUNK_WORDS and not is_table_of_contents(" ".join(chunk)):
             chunks.append(" ".join(chunk))
 
         # The last chunk already reaches the end of the text
@@ -213,6 +249,25 @@ def index_chunks(chunks: list[dict]):
     return len(points)
 
 
+def delete_document(source: str):
+    """
+    Remove every chunk of a document, so re-indexing it with other
+    chunking settings does not leave old chunks behind.
+    """
+
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+    client = get_client()
+
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete(
+            collection_name=COLLECTION_NAME,
+            points_selector=Filter(
+                must=[FieldCondition(key="source", match=MatchValue(value=source))]
+            )
+        )
+
+
 def index_documents(docs_dir: str = DOCS_DIR):
     """
     Complete indexing pipeline: every supported document in `docs_dir` -> chunks -> Qdrant.
@@ -229,6 +284,7 @@ def index_documents(docs_dir: str = DOCS_DIR):
 
     for file in files:
         chunks = chunk_document(str(file))
+        delete_document(file.name)
         count = index_chunks(chunks)
 
         documents.append({"source": file.name, "chunks": count})
