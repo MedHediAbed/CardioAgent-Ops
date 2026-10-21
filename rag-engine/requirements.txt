@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+pypdf
+qdrant-client
+sentence-transformers>=5.0
+pytest

@@ -1,0 +1,37 @@
+# Standalone stack to develop/test the RAG service:
+#   cp .env.example .env     (optional, to change the defaults)
+#   docker compose up --build
+# Service 2 (vector-db) + rag-engine
+services:
+
+  vector-db:
+    image: qdrant/qdrant:${QDRANT_VERSION:-latest}
+    container_name: vector-db
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  rag-engine:
+    build:
+      context: .
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+    container_name: rag-engine
+    ports:
+      - "${RAG_PORT:-8003}:8000"
+    environment:
+      QDRANT_URL: ${QDRANT_URL:-http://vector-db:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-esc_guidelines}
+      CHUNK_SIZE: ${CHUNK_SIZE:-200}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-40}
+      TOP_K: ${TOP_K:-4}
+      DOCS_DIR: /app/docs
+    volumes:
+      - ./docs:/app/docs:ro
+    depends_on:
+      - vector-db
+
+volumes:
+  qdrant-data:
