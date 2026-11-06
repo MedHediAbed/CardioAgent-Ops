@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - chore/setup-ci-cd
+      - 'feature/**'
 
   pull_request:
     branches:
