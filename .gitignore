@@ -1,0 +1,13 @@
+
+# Python
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+*.pyc
+
+# MLflow
+mlflow-data/
+
+# Environment
+.env
