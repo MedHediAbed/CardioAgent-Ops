@@ -4,3 +4,7 @@ python-multipart
 numpy
 librosa
 soundfile
+scikit-learn
+xgboost-cpu
+torch
+mlflow-skinny==3.17.2

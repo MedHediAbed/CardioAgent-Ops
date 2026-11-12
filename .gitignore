@@ -1,0 +1,9 @@
+# Training data (365 MB of .wav) is too big for git
+ourdataset/
+__MACOSX/
+.DS_Store
+
+# Local MLflow runs (when no tracking server is used)
+mlruns/
+mlartifacts/
+mlflow.db

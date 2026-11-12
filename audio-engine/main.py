@@ -4,6 +4,7 @@ import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException
 
 from audio_processing import preprocess_audio
+from model_registry import model_status, predict, reload_model
 
 
 app = FastAPI(
@@ -26,6 +27,27 @@ def health_check():
     return {
         "status": "healthy"
     }
+
+
+@app.get("/model")
+def get_model_info():
+    """
+    Which MLflow model the service uses and whether it is loaded.
+    """
+
+    return model_status()
+
+
+@app.post("/model/reload")
+def reload():
+    """
+    Load the model again from the MLflow registry
+    (e.g. after a new version got the "production" alias).
+    """
+
+    reload_model()
+
+    return model_status()
 
 
 @app.post("/analyze")
@@ -66,6 +88,9 @@ async def analyze_audio(file: UploadFile = File(...)):
         # Run the preprocessing pipeline
         result = preprocess_audio(temp_path)
 
+        # Classify with the model from the MLflow registry
+        prediction = predict(result["signal"])
+
         return {
             "status": "success",
             "filename": file.filename,
@@ -73,7 +98,7 @@ async def analyze_audio(file: UploadFile = File(...)):
             "signal_length": len(result["signal"]),
             "mfcc_shape": list(result["mfcc"].shape),
             "message": "Audio preprocessing completed successfully",
-            "prediction": "not implemented yet"
+            "prediction": prediction or "no model available"
         }
 
     except Exception as error:

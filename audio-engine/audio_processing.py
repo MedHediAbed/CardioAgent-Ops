@@ -90,3 +90,16 @@ def preprocess_audio(file_path: str):
         "sample_rate": sample_rate,
         "mfcc": mfcc
     }
+
+
+def extract_features(mfcc: np.ndarray):
+    """
+    Turn the MFCC matrix (N_MFCC x frames) into a fixed-size vector:
+    mean and standard deviation of each coefficient over time.
+    Used both for training and for inference, so they always match.
+    """
+
+    return np.concatenate([
+        mfcc.mean(axis=1),
+        mfcc.std(axis=1)
+    ])
