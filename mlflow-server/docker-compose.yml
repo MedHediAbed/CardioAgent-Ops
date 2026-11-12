@@ -1,0 +1,16 @@
+
+services:
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: cardio-mlflow
+
+    ports:
+      - "5000:5000"
+
+    volumes:
+      - ./mlflow-data:/app/mlflow-data
+
+    restart: unless-stopped
