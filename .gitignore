@@ -1,9 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+*.pyc
+
 # Training data (365 MB of .wav) is too big for git
 ourdataset/
 __MACOSX/
 .DS_Store
 
-# Local MLflow runs (when no tracking server is used)
+# MLflow (server data + local runs when no server is used)
+mlflow-data/
 mlruns/
 mlartifacts/
 mlflow.db
+
+# Environment
+.env
