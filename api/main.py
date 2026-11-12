@@ -1,5 +1,12 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import os
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import httpx
+
+
+AUDIO_ENGINE_URL = os.getenv("AUDIO_ENGINE_URL", "http://localhost:8002")
+ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8004")
+
 # Create the FastAPI application
 app = FastAPI(
     title="CardioAgent-Ops API Gateway",
@@ -24,7 +31,10 @@ def health_check():
 
 
 @app.post("/analyze_pcg")
-async def analyze_pcg(file: UploadFile = File(...)):
+async def analyze_pcg(
+    file: UploadFile = File(...),
+    patient: str = Form("", description="Free text: age, sex, symptoms...")
+):
 
     # Check that a file was provided
     if not file.filename:
@@ -50,15 +60,51 @@ async def analyze_pcg(file: UploadFile = File(...)):
             detail="The WAV file is empty"
         )
 
-    # Temporary response
-    # Later, this part will call Service 3 (audio-engine)
-    # and Service 4 (agent-orchestrator)
+    async with httpx.AsyncClient() as client:
+
+        # Service 3 (audio-engine): preprocessing + heart sound classification
+        try:
+            response = await client.post(
+                f"{AUDIO_ENGINE_URL}/analyze",
+                files={"file": (file.filename, audio_data, "audio/wav")},
+                timeout=60
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise HTTPException(
+                status_code=502,
+                detail=f"audio-engine failed: {str(error)}"
+            )
+
+        audio_result = response.json()
+        prediction = audio_result["prediction"]
+
+        # No model in the MLflow registry yet -> nothing to explain
+        if not isinstance(prediction, dict):
+            return {
+                "status": "partial",
+                "filename": file.filename,
+                "audio_engine": audio_result,
+                "agent_orchestrator": "skipped: no model available"
+            }
+
+        # Service 4 (agent-orchestrator): LLM + RAG clinical note
+        try:
+            response = await client.post(
+                f"{ORCHESTRATOR_URL}/report",
+                json={"prediction": prediction, "patient": patient},
+                timeout=600   # the local LLM is slow on CPU
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise HTTPException(
+                status_code=502,
+                detail=f"agent-orchestrator failed: {str(error)}"
+            )
 
     return {
         "status": "success",
         "filename": file.filename,
-        "size_bytes": len(audio_data),
-        "message": "WAV file received successfully",
-        "audio_engine": "not connected yet",
-        "agent_orchestrator": "not connected yet"
+        "prediction": prediction,
+        "report": response.json()
     }

@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+pydantic
+httpx
+mlflow-skinny==3.17.2

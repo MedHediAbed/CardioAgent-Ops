@@ -1,10 +1,12 @@
 # CardioAgent-Ops — whole platform
 #   docker compose up --build
 #
-#   api-gateway   http://localhost:8000/docs   (Service 5)
-#   audio-engine  http://localhost:8002/docs   (Service 3)
-#   rag-engine    http://localhost:8003/docs   (RAG)
-#   vector-db     http://localhost:6333/dashboard (Service 2)
+#   api-gateway         http://localhost:8000/docs   (Service 5)
+#   audio-engine        http://localhost:8002/docs   (Service 3)
+#   rag-engine          http://localhost:8003/docs   (RAG)
+#   agent-orchestrator  http://localhost:8004/docs   (Service 4)
+#   vector-db           http://localhost:6333/dashboard (Service 2)
+#   mlflow              http://localhost:5000        (experiments, model registry, LLM traces)
 #
 # Inside the network, services call each other by name, e.g. http://rag-engine:8000
 services:
@@ -13,9 +15,12 @@ services:
     build: ./api
     ports:
       - "${API_PORT:-8000}:8000"
+    environment:
+      AUDIO_ENGINE_URL: http://audio-engine:8000
+      ORCHESTRATOR_URL: http://agent-orchestrator:8000
     depends_on:
       - audio-engine
-      - rag-engine
+      - agent-orchestrator
     networks:
       - cardio-net
 
@@ -23,6 +28,15 @@ services:
     build: ./audio-engine
     ports:
       - "${AUDIO_PORT:-8002}:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: ${MODEL_NAME:-heart-sound-classifier}
+      MODEL_ALIAS: ${MODEL_ALIAS:-production}
+    volumes:
+      # Only used by `docker compose run audio-engine python train.py data`
+      - ./ourdataset/ourdataset/train:/app/data:ro
+    depends_on:
+      - mlflow
     networks:
       - cardio-net
 
@@ -57,8 +71,65 @@ services:
     networks:
       - cardio-net
 
+  agent-orchestrator:
+    build: ./agent-orchestrator
+    ports:
+      - "${ORCHESTRATOR_PORT:-8004}:8000"
+    environment:
+      RAG_URL: http://rag-engine:8000
+      OLLAMA_URL: http://llm:11434
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:3b}
+      TOP_K: ${TOP_K:-4}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      - rag-engine
+      - llm
+      - mlflow
+    networks:
+      - cardio-net
+
+  # Local LLM (Ollama). Replace LLM_MODEL by the fine-tuned model once it exists.
+  llm:
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - cardio-net
+
+  # Downloads LLM_MODEL into the llm volume, then exits (instant once cached)
+  llm-pull:
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    environment:
+      OLLAMA_HOST: http://llm:11434
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-llama3.2:3b}"]
+    depends_on:
+      - llm
+    restart: on-failure
+    networks:
+      - cardio-net
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.17.2
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
+    volumes:
+      - mlflow-data:/mlflow
+    networks:
+      - cardio-net
+
 volumes:
   qdrant-data:
+  ollama-data:
+  mlflow-data:
 
 networks:
   cardio-net:
