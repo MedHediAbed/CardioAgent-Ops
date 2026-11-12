@@ -29,6 +29,10 @@ curl -X POST http://localhost:8003/ingest        # index the ESC guidelines once
 The first start downloads the LLM (`llama3.2:3b`, ~2 GB): `docker compose logs -f llm-pull`.
 
 ## MLflow
+The tracking server is built from [mlflow-server/](mlflow-server/) (SQLite +
+artifacts in `mlflow-server/mlflow-data/`). It runs with the platform, or alone
+with `cd mlflow-server && docker compose up -d`; both use the same data folder.
+
 MLflow is used for two things:
 
 **1. Comparing the 5 heart-sound models** (experiment `heart-sound-classification`)
@@ -57,6 +61,11 @@ In MLflow, the `comparison` run contains one child run per model, with the
 metrics of every fold and their mean/std (`macc`, `sensitivity`,
 `specificity`, `accuracy`, `f1`, `roc_auc`) and `comparison.md`.
 Select the 5 child runs → **Compare** to get the charts.
+
+**Benchmark report:** `python audio-engine/benchmark/generate_report.py` reads
+the last comparison from MLflow and writes the table, confusion matrices, ROC
+curves and training curves to
+[audio-engine/benchmark/results/report.md](audio-engine/benchmark/results/report.md).
 
 The best model by **MAcc** = (sensitivity + specificity) / 2 (the PhysioNet
 2016 score, robust to the 77% / 23% class imbalance) is retrained on the whole

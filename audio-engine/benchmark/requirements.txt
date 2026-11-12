@@ -1,0 +1,4 @@
+mlflow-skinny==3.17.2
+pandas
+matplotlib
+scikit-learn
