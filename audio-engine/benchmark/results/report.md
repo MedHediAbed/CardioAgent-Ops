@@ -4,7 +4,7 @@ Run of 2026-10-22 on `ourdataset` with `audio-engine/train.py`, logged to MLflow
 (experiment `heart-sound-classification`, run `comparison`).
 **Preliminary:** the 2 CNNs were trained for 1 epoch only (`--epochs 1`, quick
 validation run). The full run (20 / 30 epochs) and the figures
-(confusion matrices, ROC curves, training curves) are produced by
+(confusion matrices, ROC curves, training curves) will be produced by
 `python benchmark/generate_report.py` after `python train.py ... --promote`.
 
 ## Protocol
@@ -23,6 +23,14 @@ validation run). The full run (20 / 30 epochs) and the figures
 | 2D-CNN | DL | MFCC matrix (13 × 20) |
 
 ## Results (mean ± std over the 3 folds)
+
+![Benchmark table](benchmark_table.png)
+
+![Model comparison](metrics_comparison.png)
+
+![Sensitivity / specificity](sensitivity_specificity.png)
+
+![Stability across folds](folds_macc.png)
 
 | Rank | Model | Family | MAcc | Sensitivity | Specificity | Accuracy | F1 | ROC-AUC |
 |---|---|---|---|---|---|---|---|---|
